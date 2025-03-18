@@ -7,323 +7,318 @@ INVALID_TOKEN = -2
 EPS = -1
 
 
-class Terminals(IntEnum):
-    EOF = 0
-    STRING = 256
-    NUMBER = 257
-    TRUE = 258
-    FALSE = 259
-    NULL = 260
+class JSON:
+    class __NonTerminals(IntEnum):
+        JSON = 261
+        VALUE = 262
+        OBJECT = 263
+        ARRAY = 264
+        FIELDS = 265
+        FIELD = 266
+        FIELDS_REST = 267
+        ITEMS = 268
+        ITEMS_REST = 269
 
+    class __Terminals(IntEnum):
+        EOF = 0
+        STRING = 256
+        NUMBER = 257
+        TRUE = 258
+        FALSE = 259
+        NULL = 260
 
-class NonTerminals(IntEnum):
-    JSON = 261
-    VALUE = 262
-    OBJECT = 263
-    ARRAY = 264
-    FIELDS = 265
-    FIELD = 266
-    FIELDS_REST = 267
-    ITEMS = 268
-    ITEMS_REST = 269
+    __keywords = {
+        "true": __Terminals.TRUE,
+        "false": __Terminals.FALSE,
+        "null": __Terminals.NULL
+    }
 
+    __keywordToValues = {
+        __Terminals.TRUE: True,
+        __Terminals.FALSE: False,
+        __Terminals.NULL: None
+    }
 
-file = None
-cache = None
-line = 1
-jump_table = {}
+    __jump_table = {
+        __NonTerminals.JSON: {
+            __Terminals.STRING: [__NonTerminals.VALUE],
+            __Terminals.NUMBER: [__NonTerminals.VALUE],
+            "{": [__NonTerminals.VALUE],
+            "[": [__NonTerminals.VALUE],
+            __Terminals.TRUE: [__NonTerminals.VALUE],
+            __Terminals.FALSE: [__NonTerminals.VALUE],
+            __Terminals.NULL: [__NonTerminals.VALUE],
+            __Terminals.EOF: []
+        },
+        __NonTerminals.VALUE: {
+            __Terminals.STRING: [__Terminals.STRING],
+            __Terminals.NUMBER: [__Terminals.NUMBER],
+            "{": [__NonTerminals.OBJECT],
+            "[": [__NonTerminals.ARRAY],
+            __Terminals.TRUE: [__Terminals.TRUE],
+            __Terminals.FALSE: [__Terminals.FALSE],
+            __Terminals.NULL: [__Terminals.NULL]
+        },
+        __NonTerminals.OBJECT: {
+            "{": ["{", __NonTerminals.FIELDS, "}"]
+        },
+        __NonTerminals.FIELDS: {
+            __Terminals.STRING: [__NonTerminals.FIELD, __NonTerminals.FIELDS_REST],
+            "}": []
+        },
+        __NonTerminals.FIELD: {
+            __Terminals.STRING: [__Terminals.STRING, ":", __NonTerminals.VALUE]
+        },
+        __NonTerminals.FIELDS_REST: {
+            ",": [",", __NonTerminals.FIELD, __NonTerminals.FIELDS_REST],
+            "}": []
+        },
+        __NonTerminals.ARRAY: {
+            "[": ["[", __NonTerminals.ITEMS, "]"]
+        },
+        __NonTerminals.ITEMS: {
+            __Terminals.STRING: [__NonTerminals.VALUE, __NonTerminals.ITEMS_REST],
+            __Terminals.NUMBER: [__NonTerminals.VALUE, __NonTerminals.ITEMS_REST],
+            "{": [__NonTerminals.VALUE, __NonTerminals.ITEMS_REST],
+            "[": [__NonTerminals.VALUE, __NonTerminals.ITEMS_REST],
+            __Terminals.TRUE: [__NonTerminals.VALUE, __NonTerminals.ITEMS_REST],
+            __Terminals.FALSE: [__NonTerminals.VALUE, __NonTerminals.ITEMS_REST],
+            __Terminals.NULL: [__NonTerminals.VALUE, __NonTerminals.ITEMS_REST],
+            "]": []
+        },
+        __NonTerminals.ITEMS_REST: {
+            ",": [",", __NonTerminals.VALUE, __NonTerminals.ITEMS_REST],
+            "]": []
+        }
+    }
 
-keywords = {
-    "true": Terminals.TRUE,
-    "false": Terminals.FALSE,
-    "null": Terminals.NULL
-}
+    __file = None
+    __cache = None
+    __line = 1
 
-keywordToValues = {
-    Terminals.TRUE: True,
-    Terminals.FALSE: False,
-    Terminals.NULL: None
-}
-
-
-def load_file(fn):
-    return open(fn, encoding="utf-8")
-
-
-# lexer
-def get_token():
-    global file, cache, line
-    c = None
-    while True:
-        c = cache or file.read(1)
-        if not c:
-            return {"tag": Terminals.EOF, "lexeme": None}
-        if c == "\n" or c == "\r" or c == "\t" or c == " ":
-            cache = None
-            if c == "\n":
-                line += 1
-            continue
-        # parse string
-        if c == '"':
-            lexeme = ""
-            while True:
-                cache = cache or file.read(1)
-                # end string parsing
-                if cache == '"' or not cache:
-                    cache = None
-                    break
-                # parse escape sequence
-                lexeme += cache
-                if cache == "\\":
-                    cache = file.read(1)
-                    match cache:
-                        case '"' | "\\" | "/" | "b" | "f" | "n" | "r" | "t":
-                            lexeme += cache
-                            cache = None
-                            continue
-                        case "u":
-                            lexeme += cache
-                            for i in range(4):
-                                cache = file.read(1)
-                                if re.match("[a-fA-F0-9]", cache):
-                                    lexeme += cache
-                                    cache = None
-                                else:
-                                    return {"tag": INVALID_TOKEN, "lexeme": cache}
-                        case _:
-                            token = {"tag": INVALID_TOKEN, "lexeme": cache}
-                            cache = None
-                            return token
-                else:
-                    cache = None
-            return {"tag": Terminals.STRING, "lexeme": lexeme}
-        # parse keyword
-        elif c.isalpha():
-            lexeme = c
-            while True:
-                cache = file.read(1)
-                if not cache.isalpha():
-                    break
-                lexeme += cache
-            ctag = keywords.get(lexeme)
-            return {"tag": ctag or INVALID_TOKEN, "lexeme": keywordToValues.get(ctag)}
-        # parse number
-        elif c.isnumeric() or c == '-':
-            is_int = True
-            lexeme = c
-            # parse int
-            while True:
-                cache = file.read(1)
-                if cache.isnumeric():
-                    if c == "0":
-                        return {"tag": INVALID_TOKEN, "lexeme": lexeme}
-                    lexeme += cache
-                else:
-                    break
-            # parse float
-            if cache == ".":
-                is_int = False
-                lexeme += cache
-                cache = file.read(1)
-                if cache.isnumeric():
-                    lexeme += cache
-                else:
-                    return {"tag": INVALID_TOKEN, "lexeme": lexeme}
+    def __get_token(self):
+        c = None
+        while True:
+            c = self.__cache or self.__file.read(1)
+            if not c:
+                return {"tag": self.__Terminals.EOF, "lexeme": None}
+            if c == "\n" or c == "\r" or c == "\t" or c == " ":
+                self.__cache = None
+                if c == "\n":
+                    self.__line += 1
+                continue
+            # parse string
+            if c == '"':
+                lexeme = ""
                 while True:
-                    cache = file.read(1)
-                    if cache.isnumeric():
-                        lexeme += cache
+                    self.__cache = self.__cache or self.__file.read(1)
+                    # end string parsing
+                    if self.__cache == '"' or not self.__cache:
+                        self.__cache = None
+                        break
+                    # parse escape sequence
+                    lexeme += self.__cache
+                    if self.__cache == "\\":
+                        self.__cache = self.__file.read(1)
+                        match self.__cache:
+                            case '"' | "\\" | "/" | "b" | "f" | "n" | "r" | "t":
+                                lexeme += self.__cache
+                                self.__cache = None
+                                continue
+                            case "u":
+                                lexeme += self.__cache
+                                for i in range(4):
+                                    self.__cache = self.__file.read(1)
+                                    if re.match("[a-fA-F0-9]", self.__cache):
+                                        lexeme += self.__cache
+                                        self.__cache = None
+                                    else:
+                                        return {"tag": INVALID_TOKEN, "lexeme": self.__cache}
+                            case _:
+                                token = {"tag": INVALID_TOKEN, "lexeme": self.__cache}
+                                self.__cache = None
+                                return token
+                    else:
+                        self.__cache = None
+                return {"tag": self.__Terminals.STRING, "lexeme": lexeme}
+            # parse keyword
+            elif c.isalpha():
+                lexeme = c
+                while True:
+                    self.__cache = self.__file.read(1)
+                    if not self.__cache.isalpha():
+                        break
+                    lexeme += self.__cache
+                ctag = self.__keywords.get(lexeme)
+                return {"tag": ctag or INVALID_TOKEN, "lexeme": self.__keywordToValues.get(ctag)}
+            # parse number
+            elif c.isnumeric() or c == '-':
+                is_int = True
+                lexeme = c
+                # parse int
+                while True:
+                    self.__cache = self.__file.read(1)
+                    if self.__cache.isnumeric():
+                        if c == "0":
+                            return {"tag": INVALID_TOKEN, "lexeme": lexeme}
+                        lexeme += self.__cache
                     else:
                         break
-                if cache == "E" or cache == "e":
-                    lexeme += cache
-                    cache = file.read(1)
-                    if cache == "+" or cache == "-":
-                        lexeme += cache
-                        cache = file.read(1)
-                    if cache.isnumeric():
-                        lexeme += cache
-                        while True:
-                            cache = file.read(1)
-                            if cache.isnumeric():
-                                lexeme += cache
-                            else:
-                                break
+                # parse float
+                if self.__cache == ".":
+                    is_int = False
+                    lexeme += self.__cache
+                    self.__cache = self.__file.read(1)
+                    if self.__cache.isnumeric():
+                        lexeme += self.__cache
                     else:
                         return {"tag": INVALID_TOKEN, "lexeme": lexeme}
-            return {"tag": Terminals.NUMBER, "lexeme": int(lexeme) if is_int else float(lexeme)}
-        # separators
-        cache = None
-        return {"tag": c, "lexeme": None}
+                    while True:
+                        self.__cache = self.__file.read(1)
+                        if self.__cache.isnumeric():
+                            lexeme += self.__cache
+                        else:
+                            break
+                    if self.__cache == "E" or self.__cache == "e":
+                        lexeme += self.__cache
+                        self.__cache = self.__file.read(1)
+                        if self.__cache == "+" or self.__cache == "-":
+                            lexeme += self.__cache
+                            self.__cache = self.__file.read(1)
+                        if self.__cache.isnumeric():
+                            lexeme += self.__cache
+                            while True:
+                                self.__cache = self.__file.read(1)
+                                if self.__cache.isnumeric():
+                                    lexeme += self.__cache
+                                else:
+                                    break
+                        else:
+                            return {"tag": INVALID_TOKEN, "lexeme": lexeme}
+                return {"tag": self.__Terminals.NUMBER, "lexeme": int(lexeme) if is_int else float(lexeme)}
+            # separators
+            self.__cache = None
+            return {"tag": c, "lexeme": None}
 
+    def __get_production(self, nt, t):
+        return self.__jump_table.get(nt, {}).get(t)
 
-def init_jump_table():
-    global jump_table
-    jump_table[NonTerminals.JSON] = {
-        Terminals.STRING: [NonTerminals.VALUE],
-        Terminals.NUMBER: [NonTerminals.VALUE],
-        "{": [NonTerminals.VALUE],
-        "[": [NonTerminals.VALUE],
-        Terminals.TRUE: [NonTerminals.VALUE],
-        Terminals.FALSE: [NonTerminals.VALUE],
-        Terminals.NULL: [NonTerminals.VALUE],
-        Terminals.EOF: []
-    }
-    jump_table[NonTerminals.VALUE] = {
-        Terminals.STRING: [Terminals.STRING],
-        Terminals.NUMBER: [Terminals.NUMBER],
-        "{": [NonTerminals.OBJECT],
-        "[": [NonTerminals.ARRAY],
-        Terminals.TRUE: [Terminals.TRUE],
-        Terminals.FALSE: [Terminals.FALSE],
-        Terminals.NULL: [Terminals.NULL]
-    }
-    jump_table[NonTerminals.OBJECT] = {
-        "{": ["{", NonTerminals.FIELDS, "}"]
-    }
-    jump_table[NonTerminals.FIELDS] = {
-        Terminals.STRING: [NonTerminals.FIELD, NonTerminals.FIELDS_REST],
-        "}": []
-    }
-    jump_table[NonTerminals.FIELD] = {
-        Terminals.STRING: [Terminals.STRING, ":", NonTerminals.VALUE]
-    }
-    jump_table[NonTerminals.FIELDS_REST] = {
-        ",": [",", NonTerminals.FIELD, NonTerminals.FIELDS_REST],
-        "}": []
-    }
-    jump_table[NonTerminals.ARRAY] = {
-        "[": ["[", NonTerminals.ITEMS, "]"]
-    }
-    jump_table[NonTerminals.ITEMS] = {
-        Terminals.STRING: [NonTerminals.VALUE, NonTerminals.ITEMS_REST],
-        Terminals.NUMBER: [NonTerminals.VALUE, NonTerminals.ITEMS_REST],
-        "{": [NonTerminals.VALUE, NonTerminals.ITEMS_REST],
-        "[": [NonTerminals.VALUE, NonTerminals.ITEMS_REST],
-        Terminals.TRUE: [NonTerminals.VALUE, NonTerminals.ITEMS_REST],
-        Terminals.FALSE: [NonTerminals.VALUE, NonTerminals.ITEMS_REST],
-        Terminals.NULL: [NonTerminals.VALUE, NonTerminals.ITEMS_REST],
-        "]": []
-    }
-    jump_table[NonTerminals.ITEMS_REST] = {
-        ",": [",", NonTerminals.VALUE, NonTerminals.ITEMS_REST],
-        "]": []
-    }
+    def __load_file(self, fn):
+        self.__file = open(fn, encoding="utf-8")
 
-
-def get_production(nt, t):
-    return jump_table.get(nt, {}).get(t)
+    def parse(self, fn):
+        start = time.time()
+        self.__load_file(fn)
+        token = self.__get_token()
+        top = None
+        prod = None
+        stack = [self.__Terminals.EOF, self.__NonTerminals.JSON]
+        json = None
+        nesting = []
+        tag = None
+        parsingDict = False
+        parsingArray = False
+        currentKey = None
+        while True:
+            top = stack[-1]
+            if top == self.__Terminals.EOF:
+                if token.get("tag") == self.__Terminals.EOF:
+                    print("SYNTAX CHECK FINISHED")
+                    break
+                else:
+                    raise Exception(f"SYNTAX ERROR: unexpected EOF while parsing.")
+            # terminal on stack
+            if type(top) is str or self.__Terminals.STRING.value <= top <= self.__Terminals.NULL.value:
+                # match terminal and reduce stack
+                tag = token.get("tag")
+                if tag == top:
+                    match tag:
+                        case "]":
+                            parsingArray = False
+                            json = nesting.pop()
+                        case "}":
+                            parsingDict = False
+                            currentKey = None
+                            json = nesting.pop()
+                        case self.__Terminals.STRING:
+                            if type(nesting[-1]) is dict:
+                                if currentKey:
+                                    nesting[-1].update({currentKey: token.get("lexeme")})
+                                    currentKey = None
+                                else:
+                                    currentKey = token.get("lexeme")
+                            elif type(nesting[-1]) is list:
+                                nesting[-1].append(token.get("lexeme"))
+                            else:
+                                json = token.get("lexeme")
+                        case self.__Terminals.NUMBER | self.__Terminals.TRUE | self.__Terminals.FALSE | self.__Terminals.NULL:
+                            if parsingDict and currentKey:
+                                nesting[-1].update({currentKey: token.get("lexeme")})
+                                currentKey = None
+                            elif parsingArray:
+                                nesting[-1].append(token.get("lexeme"))
+                            else:
+                                json = token.get("lexeme")
+                    stack.pop()
+                    token = self.__get_token()
+                else:
+                    raise Exception(
+                        f"SYNTAX ERROR: unexpected token {token.get('lexeme') or token.get('tag')} at line {self.__line}. "
+                        f"Expected a <{top.name}>")
+                    # non-terminal on stack
+            else:
+                # get production body and push to stack
+                prod = self.__get_production(top, token.get("tag"))
+                if prod is None:
+                    raise Exception(
+                        f"SYNTAX ERROR: unexpected token {token.get('lexeme') or token.get('tag')} at line {self.__line}. "
+                        f"Expected a <{top.name}>")
+                if self.__NonTerminals.OBJECT in prod:
+                    new_dict = {}
+                    if parsingDict and currentKey:
+                        nesting[-1].update({currentKey: new_dict})
+                        currentKey = None
+                        nesting.append(new_dict)
+                    elif parsingArray:
+                        nesting[-1].append(new_dict)
+                        parsingDict = True
+                        nesting.append(new_dict)
+                    else:
+                        parsingDict = True
+                        currentKey = None
+                        nesting.append(new_dict)
+                elif self.__NonTerminals.ARRAY in prod:
+                    new_arr = []
+                    if parsingDict and currentKey:
+                        nesting[-1].update({currentKey: new_arr})
+                        currentKey = None
+                        nesting.append(new_arr)
+                        parsingArray = True
+                    elif parsingArray:
+                        new_arr = []
+                        nesting[-1].append(new_arr)
+                        nesting.append(new_arr)
+                    else:
+                        parsingArray = True
+                        nesting.append(new_arr)
+                stack.pop()
+                stack.extend(prod[::-1])
+        self.__file.close()
+        end = time.time()
+        print(round(end - start, 3))
+        return json
 
 
 if __name__ == '__main__':
-    start = time.time()
-    file = load_file("generated_big.json")
-    init_jump_table()
-    token = get_token()
-    top = None
-    prod = None
-    stack = [Terminals.EOF, NonTerminals.JSON]
-    json = None
-    nesting = []
-    tag = None
-    parsingDict = False
-    parsingArray = False
-    currentKey = None
-    while True:
-        top = stack[-1]
-        if top == Terminals.EOF:
-            if token.get("tag") == Terminals.EOF:
-                print("SYNTAX CHECK FINISHED")
-                break
-            else:
-                raise Exception(f"SYNTAX ERROR: unexpected EOF while parsing.")
-        # terminal on stack
-        if type(top) is str or Terminals.STRING.value <= top <= Terminals.NULL.value:
-            # match terminal and reduce stack
-            tag = token.get("tag")
-            if tag == top:
-                match tag:
-                    case "]":
-                        parsingArray = False
-                        json = nesting.pop()
-                    case "}":
-                        parsingDict = False
-                        currentKey = None
-                        json = nesting.pop()
-                    case Terminals.STRING:
-                        if type(nesting[-1]) is dict:
-                            if currentKey:
-                                nesting[-1].update({currentKey: token.get("lexeme")})
-                                currentKey = None
-                            else:
-                                currentKey = token.get("lexeme")
-                        elif type(nesting[-1]) is list:
-                            nesting[-1].append(token.get("lexeme"))
-                        else:
-                            json = token.get("lexeme")
-                    case Terminals.NUMBER | Terminals.TRUE | Terminals.FALSE | Terminals.NULL:
-                        if parsingDict and currentKey:
-                            nesting[-1].update({currentKey: token.get("lexeme")})
-                            currentKey = None
-                        elif parsingArray:
-                            nesting[-1].append(token.get("lexeme"))
-                        else:
-                            json = token.get("lexeme")
-                stack.pop()
-                token = get_token()
-            else:
-                raise Exception(
-                    f"SYNTAX ERROR: unexpected token {token.get('lexeme') or token.get('tag')} at line {line}. "
-                    f"Expected a <{top.name}>")
-        # non-terminal on stack
-        else:
-            # get production body and push to stack
-            prod = get_production(top, token.get("tag"))
-            if prod is None:
-                raise Exception(
-                    f"SYNTAX ERROR: unexpected token {token.get('lexeme') or token.get('tag')} at line {line}. "
-                    f"Expected a <{top.name}>")
-            if NonTerminals.OBJECT in prod:
-                new_dict = {}
-                if parsingDict and currentKey:
-                    nesting[-1].update({currentKey: new_dict})
-                    currentKey = None
-                    nesting.append(new_dict)
-                elif parsingArray:
-                    nesting[-1].append(new_dict)
-                    parsingDict = True
-                    nesting.append(new_dict)
-                else:
-                    parsingDict = True
-                    currentKey = None
-                    nesting.append(new_dict)
-            elif NonTerminals.ARRAY in prod:
-                new_arr = []
-                if parsingDict and currentKey:
-                    nesting[-1].update({currentKey: new_arr})
-                    currentKey = None
-                    nesting.append(new_arr)
-                    parsingArray = True
-                elif parsingArray:
-                    new_arr = []
-                    nesting[-1].append(new_arr)
-                    nesting.append(new_arr)
-                else:
-                    parsingArray = True
-                    nesting.append(new_arr)
-            stack.pop()
-            stack.extend(prod[::-1])
-    print(json)
-    # for (k, v) in json[0].items():
-    #     print(f"{k} : {v}")
-    file.close()
-    end = time.time()
-    print(round(end - start, 3))
+    parser = JSON()
+    json = parser.parse("text.json")
+    print([n ** n for n in json.get("nums")])
 
 # TODO : add ECMA 404 standard parsing grammar DONE
 # TODO : add float parsing DONE
 # TODO : optimize parsing logic and branching
 # TODO : add duplicate key checking in dicts
+# TODO : restructure to OOP DONE
 # The JSON interchange format used in this specification is exactly that described by RFC 4627 with two exceptions:
 # The top level JSONText production of the ECMAScript JSON grammar may consist of
 # any JSONValue rather than being restricted to being a JSONObject or a JSONArray as specified by RFC 4627.
