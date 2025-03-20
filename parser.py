@@ -1,10 +1,5 @@
 import re
-import time
-
 from enum import IntEnum
-
-INVALID_TOKEN = -2
-EPS = -1
 
 
 class JSON:
@@ -20,6 +15,7 @@ class JSON:
         ITEMS_REST = 269
 
     class __Terminals(IntEnum):
+        INVALID_TOKEN = -2
         EOF = 0
         STRING = 256
         NUMBER = 257
@@ -97,7 +93,6 @@ class JSON:
     __line = 1
 
     def __get_token(self):
-        c = None
         while True:
             c = self.__cache or self.__file.read(1)
             if not c:
@@ -133,9 +128,9 @@ class JSON:
                                         lexeme += self.__cache
                                         self.__cache = None
                                     else:
-                                        return {"tag": INVALID_TOKEN, "lexeme": self.__cache}
+                                        return {"tag": self.__Terminals.INVALID_TOKEN, "lexeme": self.__cache}
                             case _:
-                                token = {"tag": INVALID_TOKEN, "lexeme": self.__cache}
+                                token = {"tag": self.__Terminals.INVALID_TOKEN, "lexeme": self.__cache}
                                 self.__cache = None
                                 return token
                     else:
@@ -149,8 +144,8 @@ class JSON:
                     if not self.__cache.isalpha():
                         break
                     lexeme += self.__cache
-                ctag = self.__keywords.get(lexeme)
-                return {"tag": ctag or INVALID_TOKEN, "lexeme": self.__keywordToValues.get(ctag)}
+                new_tag = self.__keywords.get(lexeme)
+                return {"tag": new_tag or self.__Terminals.INVALID_TOKEN, "lexeme": self.__keywordToValues.get(new_tag)}
             # parse number
             elif c.isnumeric() or c == '-':
                 is_int = True
@@ -160,7 +155,7 @@ class JSON:
                     self.__cache = self.__file.read(1)
                     if self.__cache.isnumeric():
                         if c == "0":
-                            return {"tag": INVALID_TOKEN, "lexeme": lexeme}
+                            return {"tag": self.__Terminals.INVALID_TOKEN, "lexeme": lexeme}
                         lexeme += self.__cache
                     else:
                         break
@@ -172,7 +167,7 @@ class JSON:
                     if self.__cache.isnumeric():
                         lexeme += self.__cache
                     else:
-                        return {"tag": INVALID_TOKEN, "lexeme": lexeme}
+                        return {"tag": self.__Terminals.INVALID_TOKEN, "lexeme": lexeme}
                     while True:
                         self.__cache = self.__file.read(1)
                         if self.__cache.isnumeric():
@@ -194,7 +189,7 @@ class JSON:
                                 else:
                                     break
                         else:
-                            return {"tag": INVALID_TOKEN, "lexeme": lexeme}
+                            return {"tag": self.__Terminals.INVALID_TOKEN, "lexeme": lexeme}
                 return {"tag": self.__Terminals.NUMBER, "lexeme": int(lexeme) if is_int else float(lexeme)}
             # separators
             self.__cache = None
@@ -207,15 +202,11 @@ class JSON:
         self.__file = open(fn, encoding="utf-8")
 
     def parse(self, fn):
-        start = time.time()
         self.__load_file(fn)
         token = self.__get_token()
-        top = None
-        prod = None
         stack = [self.__Terminals.EOF, self.__NonTerminals.JSON]
         json = None
         nesting = []
-        tag = None
         parsingDict = False
         parsingArray = False
         currentKey = None
@@ -223,7 +214,7 @@ class JSON:
             top = stack[-1]
             if top == self.__Terminals.EOF:
                 if token.get("tag") == self.__Terminals.EOF:
-                    print("SYNTAX CHECK FINISHED")
+                    # parsing finished without errors
                     break
                 else:
                     raise Exception(f"SYNTAX ERROR: unexpected EOF while parsing.")
@@ -251,7 +242,8 @@ class JSON:
                                 nesting[-1].append(token.get("lexeme"))
                             else:
                                 json = token.get("lexeme")
-                        case self.__Terminals.NUMBER | self.__Terminals.TRUE | self.__Terminals.FALSE | self.__Terminals.NULL:
+                        case (self.__Terminals.NUMBER | self.__Terminals.TRUE |
+                              self.__Terminals.FALSE | self.__Terminals.NULL):
                             if parsingDict and currentKey:
                                 nesting[-1].update({currentKey: token.get("lexeme")})
                                 currentKey = None
@@ -263,7 +255,8 @@ class JSON:
                     token = self.__get_token()
                 else:
                     raise Exception(
-                        f"SYNTAX ERROR: unexpected token {token.get('lexeme') or token.get('tag')} at line {self.__line}. "
+                        f"SYNTAX ERROR: unexpected token {token.get('lexeme') or token.get('tag')} "
+                        f"at line {self.__line}."
                         f"Expected a <{top.name}>")
                     # non-terminal on stack
             else:
@@ -271,7 +264,8 @@ class JSON:
                 prod = self.__get_production(top, token.get("tag"))
                 if prod is None:
                     raise Exception(
-                        f"SYNTAX ERROR: unexpected token {token.get('lexeme') or token.get('tag')} at line {self.__line}. "
+                        f"SYNTAX ERROR: unexpected token {token.get('lexeme') or token.get('tag')} "
+                        f"at line {self.__line}."
                         f"Expected a <{top.name}>")
                 if self.__NonTerminals.OBJECT in prod:
                     new_dict = {}
@@ -304,21 +298,4 @@ class JSON:
                 stack.pop()
                 stack.extend(prod[::-1])
         self.__file.close()
-        end = time.time()
-        print(round(end - start, 3))
         return json
-
-
-if __name__ == '__main__':
-    parser = JSON()
-    json = parser.parse("text.json")
-    print([n ** n for n in json.get("nums")])
-
-# TODO : add ECMA 404 standard parsing grammar DONE
-# TODO : add float parsing DONE
-# TODO : optimize parsing logic and branching
-# TODO : add duplicate key checking in dicts
-# TODO : restructure to OOP DONE
-# The JSON interchange format used in this specification is exactly that described by RFC 4627 with two exceptions:
-# The top level JSONText production of the ECMAScript JSON grammar may consist of
-# any JSONValue rather than being restricted to being a JSONObject or a JSONArray as specified by RFC 4627.

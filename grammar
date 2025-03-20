@@ -21,5 +21,5 @@ characters -> character characters | eps
 character -> unicode / {", \} | \" | \\ | \/ |
 \b | \f | \n | \r | \t | \u hex_code]
 hex_code -> hex_digit * 4
-hex_digit -> [1-9a-fA-F]
-number -> [1-9][0-9]* | [0-9] ; TODO: add floats
+hex_digit -> [0-9a-fA-F]
+number -> -?[1-9][0-9]* | -?[0-9] | floats
