@@ -208,15 +208,15 @@ class JSON:
         buffer.seek(0)
         self.__file = buffer
 
-    def parses(self, string):
-        self.__load_str(string)
-        return self.__parse()
-
     def parsef(self, fn):
         self.__load_file(fn)
         res = self.__parse()
         self.__file.close()
         return res
+
+    def parses(self, string):
+        self.__load_str(string)
+        return self.__parse()
 
     def __parse(self):
         token = self.__get_token()
