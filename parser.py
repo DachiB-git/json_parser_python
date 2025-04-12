@@ -148,7 +148,7 @@ class JSON:
                 new_tag = self.__keywords.get(lexeme)
                 new_lexeme = self.__keywordToValues.get(new_tag)
                 return {"tag": new_tag or self.__Terminals.INVALID_TOKEN,
-                        "lexeme": new_lexeme if new_lexeme is not None else lexeme}
+                        "lexeme": new_lexeme if self.__Terminals.INVALID_TOKEN != new_tag else lexeme}
             # parse number
             elif c.isnumeric() or c == '-':
                 is_int = True
