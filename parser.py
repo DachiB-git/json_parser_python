@@ -1,4 +1,3 @@
-import io
 import re
 from enum import IntEnum
 
@@ -202,23 +201,8 @@ class JSON:
     def __load_file(self, fn):
         self.__file = open(fn, encoding="utf-8")
 
-    def __load_str(self, string):
-        buffer = io.StringIO()
-        buffer.write(string)
-        buffer.seek(0)
-        self.__file = buffer
-
-    def parses(self, string):
-        self.__load_str(string)
-        return self.__parse()
-
-    def parsef(self, fn):
+    def parse(self, fn):
         self.__load_file(fn)
-        res = self.__parse()
-        self.__file.close()
-        return res
-
-    def __parse(self):
         token = self.__get_token()
         stack = [self.__Terminals.EOF, self.__NonTerminals.JSON]
         json = None
@@ -313,4 +297,5 @@ class JSON:
                         nesting.append(new_arr)
                 stack.pop()
                 stack.extend(prod[::-1])
+        self.__file.close()
         return json
