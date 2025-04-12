@@ -146,7 +146,9 @@ class JSON:
                         break
                     lexeme += self.__cache
                 new_tag = self.__keywords.get(lexeme)
-                return {"tag": new_tag or self.__Terminals.INVALID_TOKEN, "lexeme": self.__keywordToValues.get(new_tag)}
+                new_lexeme = self.__keywordToValues.get(new_tag)
+                return {"tag": new_tag or self.__Terminals.INVALID_TOKEN,
+                        "lexeme": new_lexeme if new_lexeme is not None else lexeme}
             # parse number
             elif c.isnumeric() or c == '-':
                 is_int = True
@@ -274,7 +276,7 @@ class JSON:
                 else:
                     raise Exception(
                         f"SYNTAX ERROR: unexpected token {token.get('lexeme') or token.get('tag')} "
-                        f"at line {self.__line}."
+                        f"at line {self.__line}. "
                         f"Expected a <{top.name}>")
                     # non-terminal on stack
             else:
@@ -283,7 +285,7 @@ class JSON:
                 if prod is None:
                     raise Exception(
                         f"SYNTAX ERROR: unexpected token {token.get('lexeme') or token.get('tag')} "
-                        f"at line {self.__line}."
+                        f"at line {self.__line}. "
                         f"Expected a <{top.name}>")
                 if self.__NonTerminals.OBJECT in prod:
                     new_dict = {}
