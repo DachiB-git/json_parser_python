@@ -219,6 +219,8 @@ class JSON:
         return self.__parse()
 
     def __parse(self):
+        self.__line = 1
+        self.__cache = None
         token = self.__get_token()
         stack = [self.__Terminals.EOF, self.__NonTerminals.JSON]
         json = None
